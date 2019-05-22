@@ -16,9 +16,33 @@ namespace CjcuUniversity.Controllers
         private SchoolContext db = new SchoolContext();
 
         // GET: Student
-        public ActionResult Index()
+        public ViewResult Index(string sortOrder, string searchString)
         {
-            return View(db.Students.ToList());
+            ViewBag.NameSortParm = String.IsNullOrEmpty(sortOrder) ? "name_desc" : "";
+            ViewBag.DateSortParm = sortOrder == "Date" ? "date_desc" : "Date";
+            var students = from s in db.Students
+                           select s;
+            if (!String.IsNullOrEmpty(searchString))
+            {
+                students = students.Where(s => s.LastName.Contains(searchString)
+                                       || s.FirstMidName.Contains(searchString));
+            }
+            switch (sortOrder)
+            {
+                case "name_desc":
+                    students = students.OrderByDescending(s => s.LastName);
+                    break;
+                case "Date":
+                    students = students.OrderBy(s => s.EnrollmentDate);
+                    break;
+                case "date_desc":
+                    students = students.OrderByDescending(s => s.EnrollmentDate);
+                    break;
+                default:
+                    students = students.OrderBy(s => s.LastName);
+                    break;
+            }
+            return View(students.ToList());
         }
 
         // GET: Student/Details/5
@@ -67,18 +91,31 @@ namespace CjcuUniversity.Controllers
         }
 
         // GET: Student/Edit/5
-        public ActionResult Edit(int? id)
+        [HttpPost, ActionName("Edit")]
+        [ValidateAntiForgeryToken]
+          public ActionResult EditPost(int? id)
         {
             if (id == null)
             {
                 return new HttpStatusCodeResult(HttpStatusCode.BadRequest);
             }
-            Student student = db.Students.Find(id);
-            if (student == null)
+            var studentToUpdate = db.Students.Find(id);
+            if (TryUpdateModel(studentToUpdate, "",
+               new string[] { "LastName", "FirstMidName", "EnrollmentDate" }))
             {
-                return HttpNotFound();
+                try
+                {
+                    db.SaveChanges();
+
+                    return RedirectToAction("Index");
+                }
+                catch (DataException /* dex */)
+                {
+                    //Log the error (uncomment dex variable name and add a line here to write a log.
+                    ModelState.AddModelError("", "無法修改，請再試一次!若持續錯誤，請洽系統管理者! ");
+                }
             }
-            return View(student);
+            return View(studentToUpdate);
         }
 
         // POST: Student/Edit/5
@@ -98,11 +135,15 @@ namespace CjcuUniversity.Controllers
         }
 
         // GET: Student/Delete/5
-        public ActionResult Delete(int? id)
+        public ActionResult Delete(int? id, bool? saveChangesError = false)
         {
             if (id == null)
             {
                 return new HttpStatusCodeResult(HttpStatusCode.BadRequest);
+            }
+            if (saveChangesError.GetValueOrDefault())
+            {
+                ViewBag.ErrorMessage = "無法修改，請再試一次!若持續錯誤，請洽系統管理者! ";
             }
             Student student = db.Students.Find(id);
             if (student == null)
@@ -113,13 +154,21 @@ namespace CjcuUniversity.Controllers
         }
 
         // POST: Student/Delete/5
-        [HttpPost, ActionName("Delete")]
+        [HttpPost]
         [ValidateAntiForgeryToken]
-        public ActionResult DeleteConfirmed(int id)
+        public ActionResult Delete(int id)
         {
-            Student student = db.Students.Find(id);
-            db.Students.Remove(student);
-            db.SaveChanges();
+            try
+            {
+                Student student = db.Students.Find(id);
+                db.Students.Remove(student);
+                db.SaveChanges();
+            }
+            catch (DataException/* dex */)
+            {
+                //Log the error (uncomment dex variable name and add a line here to write a log.
+                return RedirectToAction("Delete", new { id = id, saveChangesError = true });
+            }
             return RedirectToAction("Index");
         }
 
